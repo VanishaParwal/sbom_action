@@ -1,0 +1,112 @@
+name: "AccuKnox SBOM Scan"
+description: "Download the AccuKnox ASPM scanner binary, generate a filesystem SBOM with license enrichment, and upload it to AccuKnox."
+author: "AccuKnox"
+branding:
+  icon: "package"
+  color: "blue"
+
+inputs:
+  project_name:
+    description: "AccuKnox SBOM project name (--project-name)"
+    required: true
+  scan_path:
+    description: "Directory to generate the SBOM for (passed as 'filesystem <path>')"
+    required: false
+    default: "."
+  accuknox_token:
+    description: "AccuKnox token"
+    required: true
+  accuknox_endpoint:
+    description: "AccuKnox endpoint, e.g. cspm.demo.accuknox.com"
+    required: true
+  accuknox_label:
+    description: "AccuKnox label used to group results"
+    required: true
+  scanner_version:
+    description: "aspm-scanner-cli release tag to download"
+    required: false
+    default: "v0.16.4"
+  enrich_licenses:
+    description: "Run Syft after Trivy to fill missing SPDX licenses (--enrich-licenses)"
+    required: false
+    default: "true"
+  sbom_format:
+    description: "cyclonedx or spdx"
+    required: false
+    default: "cyclonedx"
+  soft_fail:
+    description: "Do not fail the job when the scan reports issues (--softfail)"
+    required: false
+    default: "true"
+  upload_artifact:
+    description: "Upload the generated SBOM as a workflow artifact"
+    required: false
+    default: "true"
+
+outputs:
+  sbom_file:
+    description: "Path of the generated SBOM"
+    value: ${{ steps.scan.outputs.sbom_file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download AccuKnox ASPM scanner
+      shell: bash
+      env:
+        SCANNER_VERSION: ${{ inputs.scanner_version }}
+      run: |
+        set -euo pipefail
+        if [ "$RUNNER_OS" != "Linux" ] || [ "$(uname -m)" != "x86_64" ]; then
+          echo "::error::This action supports Linux x86_64 runners only"
+          exit 1
+        fi
+        BIN_DIR="$RUNNER_TEMP/accuknox-bin"
+        mkdir -p "$BIN_DIR"
+        curl -sSfL -o "$BIN_DIR/accuknox-aspm-scanner" \
+          "https://github.com/accuknox/aspm-scanner-cli/releases/download/${SCANNER_VERSION}/accuknox-aspm-scanner-linux-amd64"
+        chmod +x "$BIN_DIR/accuknox-aspm-scanner"
+        echo "$BIN_DIR" >> "$GITHUB_PATH"
+        "$BIN_DIR/accuknox-aspm-scanner" --version
+
+    - name: Install SBOM tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Trivy ("container") generates the SBOM; Syft is used by --enrich-licenses
+        accuknox-aspm-scanner tool install --type container
+        accuknox-aspm-scanner tool install --type syft
+
+    - name: Generate and upload SBOM
+      id: scan
+      shell: bash
+      env:
+        ACCUKNOX_TOKEN: ${{ inputs.accuknox_token }}
+        ACCUKNOX_ENDPOINT: ${{ inputs.accuknox_endpoint }}
+        ACCUKNOX_LABEL: ${{ inputs.accuknox_label }}
+        PROJECT_NAME: ${{ inputs.project_name }}
+        SCAN_PATH: ${{ inputs.scan_path }}
+        SBOM_FORMAT: ${{ inputs.sbom_format }}
+        ENRICH_LICENSES: ${{ inputs.enrich_licenses }}
+        SOFT_FAIL: ${{ inputs.soft_fail }}
+      run: |
+        set -euo pipefail
+        SCAN_ARGS=(--endpoint "$ACCUKNOX_ENDPOINT" --token "$ACCUKNOX_TOKEN" --label "$ACCUKNOX_LABEL"
+                   --project-name "$PROJECT_NAME" --keep-results)
+        [ "$SOFT_FAIL" = "true" ] && SCAN_ARGS+=(--softfail)
+
+        SBOM_FILE="$RUNNER_TEMP/sbom-${PROJECT_NAME}.${SBOM_FORMAT}.json"
+        CONTAINER_ARGS=(--command "filesystem $SCAN_PATH" --generate-sbom
+                        --sbom-format "$SBOM_FORMAT" --sbom-output "$SBOM_FILE")
+        [ "$ENRICH_LICENSES" = "true" ] && CONTAINER_ARGS+=(--enrich-licenses)
+
+        accuknox-aspm-scanner scan "${SCAN_ARGS[@]}" container "${CONTAINER_ARGS[@]}"
+        echo "sbom_file=$SBOM_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: Upload SBOM artifact
+      if: ${{ inputs.upload_artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-${{ inputs.project_name }}
+        path: ${{ steps.scan.outputs.sbom_file }}
+        if-no-files-found: warn

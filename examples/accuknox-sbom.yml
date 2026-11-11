@@ -1,0 +1,34 @@
+name: AccuKnox SBOM Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Optional: build first so the SBOM includes resolved dependencies (Maven example)
+      # - uses: actions/setup-java@v4
+      #   with:
+      #     distribution: temurin
+      #     java-version: "17"
+      # - run: ./mvnw -B -DskipTests package
+
+      - name: AccuKnox SBOM scan
+        uses: VanishaParwal/sbom_action@v1
+        with:
+          project_name: my-project
+          accuknox_token: ${{ secrets.ACCUKNOX_TOKEN }}
+          accuknox_endpoint: ${{ secrets.ACCUKNOX_ENDPOINT }}
+          accuknox_label: ${{ secrets.ACCUKNOX_LABEL }}
+          # scan_path: "."
+          # enrich_licenses: "true"
+          # sbom_format: "cyclonedx"
+          # soft_fail: "true"

@@ -47,7 +47,6 @@ jobs:
 | `accuknox_label` | yes | | AccuKnox label |
 | `scan_path` | no | `.` | Directory to scan |
 | `scanner_version` | no | `v0.16.4` | aspm-scanner-cli release tag |
-| `enrich_licenses` | no | `true` | Add `--enrich-licenses` |
 | `sbom_format` | no | `cyclonedx` | `cyclonedx` or `spdx` |
 | `soft_fail` | no | `true` | Add `--softfail` |
 | `upload_artifact` | no | `true` | Upload the SBOM as a workflow artifact |

@@ -26,10 +26,6 @@ inputs:
     description: "aspm-scanner-cli release tag to download"
     required: false
     default: "v0.16.4"
-  enrich_licenses:
-    description: "Run Syft after Trivy to fill missing SPDX licenses (--enrich-licenses)"
-    required: false
-    default: "true"
   sbom_format:
     description: "cyclonedx or spdx"
     required: false
@@ -87,20 +83,18 @@ runs:
         PROJECT_NAME: ${{ inputs.project_name }}
         SCAN_PATH: ${{ inputs.scan_path }}
         SBOM_FORMAT: ${{ inputs.sbom_format }}
-        ENRICH_LICENSES: ${{ inputs.enrich_licenses }}
         SOFT_FAIL: ${{ inputs.soft_fail }}
       run: |
         set -euo pipefail
-        SCAN_ARGS=(--endpoint "$ACCUKNOX_ENDPOINT" --token "$ACCUKNOX_TOKEN" --label "$ACCUKNOX_LABEL"
-                   --project-name "$PROJECT_NAME" --keep-results)
-        [ "$SOFT_FAIL" = "true" ] && SCAN_ARGS+=(--softfail)
-
+        SOFT_FAIL_ARG=""
+        [ "$SOFT_FAIL" = "true" ] && SOFT_FAIL_ARG="--softfail"
         SBOM_FILE="$RUNNER_TEMP/sbom-${PROJECT_NAME}.${SBOM_FORMAT}.json"
-        CONTAINER_ARGS=(--command "filesystem $SCAN_PATH" --generate-sbom
-                        --sbom-format "$SBOM_FORMAT" --sbom-output "$SBOM_FILE")
-        [ "$ENRICH_LICENSES" = "true" ] && CONTAINER_ARGS+=(--enrich-licenses)
 
-        accuknox-aspm-scanner scan "${SCAN_ARGS[@]}" container "${CONTAINER_ARGS[@]}"
+        accuknox-aspm-scanner scan $SOFT_FAIL_ARG \
+          --endpoint "$ACCUKNOX_ENDPOINT" --token "$ACCUKNOX_TOKEN" --label "$ACCUKNOX_LABEL" \
+          --project-name "$PROJECT_NAME" --keep-results \
+          container --command "filesystem $SCAN_PATH" --generate-sbom --enrich-licenses \
+          --sbom-format "$SBOM_FORMAT" --sbom-output "$SBOM_FILE"
         echo "sbom_file=$SBOM_FILE" >> "$GITHUB_OUTPUT"
 
     - name: Upload SBOM artifact

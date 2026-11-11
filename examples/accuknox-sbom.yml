@@ -29,6 +29,5 @@ jobs:
           accuknox_endpoint: ${{ secrets.ACCUKNOX_ENDPOINT }}
           accuknox_label: ${{ secrets.ACCUKNOX_LABEL }}
           # scan_path: "."
-          # enrich_licenses: "true"
           # sbom_format: "cyclonedx"
           # soft_fail: "true"
